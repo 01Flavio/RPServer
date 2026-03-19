@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>VTT</title>
+
+<link rel="stylesheet" href="style.css">
+
+<script src="/socket.io/socket.io.js"></script>
+
+</head>
+
+<body>
+
+<h1>Mini VTT</h1>
+
+<canvas id="map" width="800" height="500"></canvas>
+
+<div id="ui">
+
+<div id="chatBox">
+
+<h3>Chat</h3>
+
+<div id="chat"></div>
+
+<input id="msg" placeholder="Mensagem">
+
+<button onclick="sendChat()">Enviar</button>
+
+</div>
+
+<div id="diceBox">
+
+<button onclick="rollDice()">Rolar D20</button>
+
+</div>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+
+</html>

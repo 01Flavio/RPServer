@@ -1,0 +1,16 @@
+services:
+
+  vtt:
+
+    image: node:18
+
+    working_dir: /app
+
+    volumes:
+      - ./backend:/app:Z
+      - ./frontend:/frontend:Z
+
+    command: sh -c "npm install && node server.js"
+
+    ports:
+      - "3000:3000"
