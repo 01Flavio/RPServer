@@ -175,7 +175,7 @@ test("lobby, blank campaigns, configurable rules and dynamic characters share on
     const { socket: player } = await env.player(gm, result.characterId)
     assert.equal((await request(player, "createCharacter", { name: "Forbidden" })).ok, false)
     assert.equal((await request(player, "removeCharacter", { characterId: result.characterId })).ok, false)
-    const settings = { revision: 0, title: "Crônicas", system: "Meu sistema", description: "Uma longa jornada", defaultDie: 6, rollMode: "modifier", statusLabels: { life: "Vitalidade", energy: "Mana", stress: "Corrupção" } }
+    const settings = { revision: 0, title: "Crônicas", system: "Meu sistema", description: "Uma longa jornada", defaultDie: 6, rollMode: "modifier", skillCatalog: { Magia: 3, Maldição: -1 }, statusLabels: { life: "Vitalidade", energy: "Mana", stress: "Corrupção" } }
     assert.equal((await request(player, "updateSession", settings)).ok, false)
     assert.equal((await request(gm, "updateSession", settings)).ok, true)
     assert.equal((await request(gm, "updateSession", settings)).ok, false, "session conflicts are rejected")
@@ -219,7 +219,8 @@ test("version one sessions migrate without losing sheets, messages or invitation
     const env = await setup(t)
     const old = seed("antiga")
     old.version = 1
-    for (const key of ["title", "system", "description", "defaultDie", "rollMode", "statusLabels", "revision", "tokens"]) delete old[key]
+    for (const key of ["title", "system", "description", "defaultDie", "rollMode", "statusLabels", "revision", "tokens", "skillCatalog"]) delete old[key]
+    old.characters[0].skills["Perícia antiga"] = 42
     old.characters[0].life = 3
     old.invites.alex = "saved-hash"
     old.messages.push({ id: "old-message", from: "gm", to: "alex", text: "Privada" })
@@ -231,9 +232,50 @@ test("version one sessions migrate without losing sheets, messages or invitation
     assert.equal(migrated.characters[0].life, 3)
     assert.equal(migrated.invites.alex, "saved-hash")
     assert.equal(migrated.messages[0].text, "Privada")
+    assert.equal(migrated.skillCatalog["Perícia antiga"], 42)
     assert.equal(JSON.parse(fs.readFileSync(file)).version, 1, "read migration does not overwrite files")
     env.store.save(migrated)
     assert.equal(createStore(env.directory).get("antiga").version, 2)
     fs.writeFileSync(path.join(env.directory, "broken.json"), "invalid json")
     assert.equal(env.store.list().find((s) => s.id === "broken").unavailable, true)
+})
+
+test("master defines available skills; player selects only approved skills and cannot change scores", async (t) => {
+    const env = await setup(t)
+    const gm = await env.gm()
+    const { socket: alex } = await env.player(gm, "alex")
+    const settings = { revision: 0, title: "Perícias", system: "Livre", description: "", defaultDie: 100, rollMode: "under", statusLabels: gm.state.statusLabels, skillCatalog: { Observar: 50, Magia: 20 } }
+    assert.equal((await request(alex, "updateSession", settings)).ok, false)
+    assert.equal((await request(gm, "updateSession", settings)).ok, true)
+    assert.deepEqual(gm.state.characters[0].skills, { Observar: 50 })
+    assert.equal(gm.state.characters[0].revision, 1, "removed skills invalidate older drafts")
+    const update = (skills, revision) => request(alex, "updateCharacter", { characterId: "alex", revision, patch: { skills } })
+    assert.equal((await update({ Inventada: 100 }, 1)).ok, false)
+    assert.equal((await update({ Observar: 99 }, 1)).ok, false)
+    assert.equal((await update({ Magia: 80 }, 1)).ok, false)
+    assert.equal((await update({ Observar: 50, Magia: 20 }, 1)).ok, true)
+    assert.equal((await request(gm, "updateCharacter", { characterId: "alex", revision: 2, patch: { skills: { Observar: 75, Magia: 20 } } })).ok, true)
+    assert.equal((await update({ Observar: 50, Magia: 20 }, 3)).ok, false, "player cannot replace a master-assigned value")
+    assert.equal((await update({ Observar: 75 }, 3)).ok, true, "player may uncheck a skill")
+    assert.equal((await request(gm, "updateSession", { ...settings, revision: 1, skillCatalog: { Observar: 10, Magia: 30 } })).ok, true)
+    assert.equal(env.store.get("halloween").characters[0].skills.Observar, 75, "new defaults preserve existing values")
+    assert.equal((await update({ Observar: 75, Magia: 30 }, 4)).ok, true)
+    assert.equal((await request(gm, "updateSession", { ...settings, revision: 2, skillCatalog: [] })).ok, false)
+    assert.equal((await request(gm, "updateSession", { ...settings, revision: 2, skillCatalog: { Magia: 30 } })).ok, true)
+    assert.deepEqual(createStore(env.directory).get("halloween").characters[0].skills, { Magia: 30 })
+    assert.deepEqual(createStore(env.directory).get("halloween").skillCatalog, { Magia: 30 })
+})
+
+test("version two sessions without a skill catalog preserve the union of existing skills", async (t) => {
+    const env = await setup(t)
+    const old = seed("custom")
+    delete old.skillCatalog
+    old.characters[0].skills = { Magia: 15 }
+    old.characters[1].skills = { Cura: 40 }
+    fs.writeFileSync(path.join(env.directory, "custom.json"), JSON.stringify(old))
+    const loaded = env.store.get("custom")
+    assert.equal(loaded.skillCatalog.Magia, 15)
+    assert.equal(loaded.skillCatalog.Cura, 40)
+    assert.deepEqual(loaded.characters[0].skills, { Magia: 15 })
+    assert.equal(JSON.parse(fs.readFileSync(path.join(env.directory, "custom.json"))).skillCatalog, undefined)
 })

@@ -17,3 +17,6 @@ label { display: block; font: 11px/1.6 var(--sans); color: #c1c5b7; margin-botto
 .skip { top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
 .skip:focus-visible { top: 5px; width: auto; height: auto; padding: 12px; overflow: visible; clip-path: none; }
 .nav-link:hover { background: transparent; color: var(--gold-light); }
+.skill-selection { margin-top: 25px; }.skill-options { max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-top: 0; padding: 8px 12px; background: #11150f; }
+.skill-options label { display: flex; align-items: center; gap: 10px; padding: 10px 0; margin: 0; cursor: pointer; font-size: 13px; }.skill-options input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--gold); }.skill-options span { flex: 1; }.skill-options small { color: var(--muted); font-size: 10px; }.skill-options p { padding: 12px 0; margin: 0; }
+.score input { width: 70px; margin: 0; padding: 5px; text-align: center; }.score > span { flex: 1; }

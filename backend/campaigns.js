@@ -11,7 +11,7 @@ const integer = (value, min, max) => Number.isInteger(value) && value >= min && 
 
 function seed(id, template = "nocturne") {
     const occupations = ["Jornalista", "Médica", "Investigador", "Bibliotecária", "Estudante"]
-    return {
+    const session = {
         version: 2, id, revision: 0, title: template === "nocturne" ? "Nocturne" : "Nova campanha",
         system: template === "nocturne" ? "Horror investigativo · d100" : "Sistema livre",
         description: template === "nocturne" ? "Uma noite de Halloween. Cinco desconhecidos. Uma casa que não deveria existir." : "Uma nova história espera pelo seu grupo.",
@@ -27,6 +27,8 @@ function seed(id, template = "nocturne") {
             inventory: "Lanterna\nCaderno\nUm objeto pessoal"
         }))
     }
+    session.skillCatalog = Object.assign({}, ...session.characters.map((c) => c.skills))
+    return session
 }
 
 // One process owns the directory. Only replace in-memory state after a successful atomic save.
@@ -42,7 +44,10 @@ function createStore(directory) {
                     const data = JSON.parse(fs.readFileSync(file, "utf8"))
                     if (![1, 2].includes(data.version) || data.id !== id || !Array.isArray(data.characters) || !Array.isArray(data.messages) || !data.invites) fail("Formato de sessão inválido.")
                     // In-memory migration preserves all sheets, messages and invitation hashes.
-                    cache.set(id, data.version === 1 ? { ...seed(id), ...data, version: 2, tokens: [] } : data)
+                    const session = data.version === 1 ? { ...seed(id), ...data, version: 2, tokens: [] } : data
+                    // Older campaigns used free-form skills; promote their union without changing sheets.
+                    if (!data.skillCatalog) session.skillCatalog = Object.assign({}, ...session.characters.map((c) => c.skills))
+                    cache.set(id, session)
                 } catch (error) {
                     if (error.code !== "ENOENT") throw error
                     return null
@@ -84,12 +89,21 @@ function view(session, user, online = []) {
     return {
         id: session.id, role: user.role, characterId: user.characterId,
         title: session.title, system: session.system, description: session.description, revision: session.revision,
-        defaultDie: session.defaultDie, rollMode: session.rollMode, statusLabels: session.statusLabels,
+        defaultDie: session.defaultDie, rollMode: session.rollMode, statusLabels: session.statusLabels, skillCatalog: session.skillCatalog,
         tokens: session.tokens,
         roster: session.characters.map((c, index) => ({ id: c.id, name: c.name, color: COLORS[index % COLORS.length], online: online.includes(c.id) })),
         characters: session.characters.filter((character) => user.role === "gm" || character.id === user.characterId),
         messages: session.messages.filter((message) => visibleMessage(message, user))
     }
+}
+
+function validateScores(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length > 30) fail("Lista de valores inválida.")
+    return Object.fromEntries(Object.entries(value).map(([label, score]) => {
+        const name = text(label, 40)
+        if (!name || name !== label || ["__proto__", "constructor", "prototype"].includes(name)) fail("Nome de atributo ou perícia inválido.")
+        return [name, integer(score, -999, 9999)]
+    }))
 }
 
 function patchCharacter(character, patch) {
@@ -102,12 +116,7 @@ function patchCharacter(character, patch) {
         } else if (key === "age") next.age = integer(value, 1, 150)
         else if (["life", "energy", "stress", "maxLife", "maxEnergy", "maxStress"].includes(key)) next[key] = integer(value, key.startsWith("max") ? 1 : 0, 999)
         else if (["attributes", "skills"].includes(key)) {
-            if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length > 30) fail("Lista de valores inválida.")
-            next[key] = Object.fromEntries(Object.entries(value).map(([label, score]) => {
-                const name = text(label, 40)
-                if (!name || ["__proto__", "constructor", "prototype"].includes(name)) fail("Nome de atributo inválido.")
-                return [name, integer(score, -999, 9999)]
-            }))
+            next[key] = validateScores(value)
         } else fail("Campo de ficha não permitido.")
     }
     for (const [current, maximum] of [["life", "maxLife"], ["energy", "maxEnergy"], ["stress", "maxStress"]]) {
@@ -249,8 +258,13 @@ function attachCampaigns(io, options = {}) {
                 return [key, label]
             }))
             if (!["under", "modifier"].includes(payload.rollMode)) fail("Regra de teste inválida.")
+            const skillCatalog = payload.skillCatalog === undefined ? session.skillCatalog : validateScores(payload.skillCatalog)
+            const characters = session.characters.map((character) => {
+                const skills = Object.fromEntries(Object.entries(character.skills).filter(([name]) => Object.hasOwn(skillCatalog, name)))
+                return Object.keys(skills).length === Object.keys(character.skills).length ? character : { ...character, skills, revision: character.revision + 1 }
+            })
             store.save({ ...session, title, system: text(payload.system, 80), description: text(payload.description, 2000), statusLabels: labels,
-                defaultDie: integer(payload.defaultDie, 2, 1000), rollMode: payload.rollMode, revision: session.revision + 1 })
+                skillCatalog, characters, defaultDie: integer(payload.defaultDie, 2, 1000), rollMode: payload.rollMode, revision: session.revision + 1 })
             publish(session.id)
             return {}
         })
@@ -271,6 +285,10 @@ function attachCampaigns(io, options = {}) {
             if (!character || (user.role !== "gm" && character.id !== user.characterId)) fail("Sem permissão para esta ficha.")
             if (payload.revision !== character.revision) fail("A ficha mudou. Recarregue a versão atual antes de salvar.")
             const updated = patchCharacter(character, payload.patch)
+            for (const [name, value] of Object.entries(updated.skills)) {
+                if (!Object.hasOwn(session.skillCatalog, name)) fail("Escolha apenas perícias definidas pelo mestre para esta campanha.")
+                if (user.role !== "gm" && value !== (Object.hasOwn(character.skills, name) ? character.skills[name] : session.skillCatalog[name])) fail("Apenas o mestre pode alterar os valores das perícias.")
+            }
             store.save({ ...session, characters: session.characters.map((item) => item.id === updated.id ? updated : item) })
             publish(session.id)
             return {}

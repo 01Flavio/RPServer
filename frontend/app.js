@@ -20,6 +20,7 @@ let activeScreen = "lobby"
 let lastMessageId = null
 let waitingTemplate = null
 let joining = false
+let skillDraft = {}
 
 function notice(message) { $("notice").textContent = message }
 function request(event, payload = {}) {
@@ -181,7 +182,7 @@ function renderSheet() {
         $(`${key}Meter`).max = current[`max${key[0].toUpperCase()}${key.slice(1)}`]
         $(`${key}Meter`).value = current[key]
     }
-    for (const category of ["attributes", "skills"]) {
+    for (const category of ["attributes"]) {
         sheetForm.elements[category].value = Object.entries(current[category]).map(([label, value]) => `${label}: ${value}`).join("\n")
         $(category).replaceChildren()
         for (const [label, value] of Object.entries(current[category])) {
@@ -198,7 +199,66 @@ function renderSheet() {
             $(category).append(row)
         }
     }
+    skillDraft = { ...current.skills }
+    renderSkillOptions(Object.keys(current.skills))
     $("saveStatus").textContent = `Salvo · versão ${current.revision}`
+}
+function chosenSkills() {
+    return Array.from($("skillOptions").querySelectorAll("input:checked"), (input) => input.value)
+}
+function renderSkillOptions(selected) {
+    $("skillOptions").replaceChildren()
+    for (const [name, value] of Object.entries(state.skillCatalog)) {
+        const label = document.createElement("label")
+        const input = document.createElement("input")
+        input.type = "checkbox"; input.value = name; input.checked = selected.includes(name)
+        const caption = document.createElement("span"); caption.textContent = name
+        const score = document.createElement("small"); score.textContent = `Inicial: ${value}`
+        input.onchange = () => {
+            if (input.checked && !Object.hasOwn(skillDraft, name)) skillDraft[name] = value
+            renderSkillRows()
+        }
+        label.append(input, caption, score); $("skillOptions").append(label)
+    }
+    if (!Object.keys(state.skillCatalog).length) {
+        const hint = document.createElement("p"); hint.className = "muted"; hint.textContent = "O mestre ainda não definiu as perícias desta campanha."; $("skillOptions").append(hint)
+    }
+    $("skillHelp").textContent = state.role === "gm" ? "Defina as opções nas ferramentas do mestre. Aqui você escolhe as perícias desta ficha e pode ajustar seus valores." : "Marque as perícias do seu personagem entre as opções definidas pelo mestre. Salve a ficha para confirmar."
+    renderSkillRows()
+}
+function renderSkillRows() {
+    $("skills").replaceChildren()
+    const names = chosenSkills()
+    $("skillsToggle").textContent = `Selecionar perícias · ${names.length} marcada(s) ▾`
+    for (const name of names) {
+        const value = skillDraft[name] ?? state.skillCatalog[name]
+        skillDraft[name] = value
+        const row = document.createElement("div"); row.className = "score"
+        const label = document.createElement("span"); label.textContent = name
+        row.append(label)
+        if (state.role === "gm") {
+            const input = document.createElement("input")
+            input.type = "number"; input.min = -999; input.max = 9999; input.required = true; input.value = value
+            input.setAttribute("aria-label", `Valor de ${name}`)
+            input.oninput = () => { skillDraft[name] = input.value === "" ? NaN : Number(input.value) }
+            row.append(input)
+        }
+        const button = document.createElement("button"); button.type = "button"
+        const saved = character()?.skills[name]
+        button.textContent = saved === undefined ? "Salvar" : saved
+        button.disabled = saved === undefined
+        button.setAttribute("aria-label", `Rolar ${name}, valor salvo ${saved ?? "não definido"}`)
+        button.title = "A rolagem usa o valor salvo na ficha."
+        button.onclick = () => perform(() => request("roll", { characterId: selectedId, category: "skills", label: name }))
+        row.append(button); $("skills").append(row)
+    }
+}
+function sheetValues() {
+    return { ...Object.fromEntries(new FormData(sheetForm)), skills: Object.fromEntries(chosenSkills().map((name) => [name, skillDraft[name]])) }
+}
+$("skillsToggle").onclick = () => {
+    const expanded = $("skillsToggle").getAttribute("aria-expanded") !== "true"
+    $("skillsToggle").setAttribute("aria-expanded", String(expanded)); $("skillOptions").hidden = !expanded
 }
 function renderSettings() {
     if (!state || state.role !== "gm") return
@@ -206,6 +266,7 @@ function renderSettings() {
     settingsDirty = false
     for (const key of ["title", "system", "description", "defaultDie", "rollMode"]) settingsForm.elements[key].value = state[key]
     for (const key of ["life", "energy", "stress"]) settingsForm.elements[key].value = state.statusLabels[key]
+    settingsForm.elements.skillCatalog.value = Object.entries(state.skillCatalog).map(([name, value]) => `${name}: ${value}`).join("\n")
     $("settingsStatus").textContent = `Salvo · versão ${state.revision}`
 }
 function renderMessages() {
@@ -233,6 +294,8 @@ function renderMessages() {
 function renderState(next) {
     const initial = !state
     const oldDie = state?.defaultDie
+    const oldCatalog = JSON.stringify(state?.skillCatalog)
+    const selectedSkills = state ? chosenSkills() : []
     state = next
     const selectedExists = state.characters.some((c) => c.id === selectedId)
     if (!selectedExists) { selectedId = state.characters[0]?.id || null; editingRevision = null; dirty = false }
@@ -278,6 +341,10 @@ function renderState(next) {
     renderMessages()
     if (!character() || editingRevision === null || (!dirty && character().revision !== editingRevision)) renderSheet()
     else if (character().revision !== editingRevision) $("conflict").hidden = false
+    if (character() && oldCatalog !== JSON.stringify(state.skillCatalog)) {
+        if (dirty) renderSkillOptions(selectedSkills)
+        else renderSheet()
+    }
     if (settingsRevision === null || (!settingsDirty && state.revision !== settingsRevision)) renderSettings()
     else if (state.revision !== settingsRevision) $("settingsStatus").textContent = "A campanha mudou. Recarregue as configurações antes de salvar. Seu rascunho foi preservado."
     map.update(state, selectedId)
@@ -361,16 +428,16 @@ function parseScores(value) {
 sheetForm.onsubmit = (event) => {
     event.preventDefault()
     perform(async () => {
-        const patch = Object.fromEntries(new FormData(sheetForm))
+        const patch = sheetValues()
         for (const key of ["age", "life", "maxLife", "energy", "maxEnergy", "stress", "maxStress"]) patch[key] = Number(patch[key])
-        for (const key of ["attributes", "skills"]) patch[key] = parseScores(patch[key])
+        patch.attributes = parseScores(patch.attributes)
         if (pendingSave) return
         pendingSave = true
         const savedId = selectedId
-        const snapshot = JSON.stringify(Object.fromEntries(new FormData(sheetForm)))
+        const snapshot = JSON.stringify(sheetValues())
         try {
             await request("updateCharacter", { characterId: selectedId, revision: editingRevision, patch })
-            if (selectedId === savedId && JSON.stringify(Object.fromEntries(new FormData(sheetForm))) === snapshot) renderSheet()
+            if (selectedId === savedId && JSON.stringify(sheetValues()) === snapshot) renderSheet()
         } finally { pendingSave = false }
     })
 }
@@ -382,7 +449,7 @@ settingsForm.onsubmit = (event) => {
         const values = Object.fromEntries(new FormData(settingsForm))
         const snapshot = JSON.stringify(values)
         await request("updateSession", { revision: settingsRevision, title: values.title, system: values.system, description: values.description,
-            defaultDie: Number(values.defaultDie), rollMode: values.rollMode, statusLabels: { life: values.life, energy: values.energy, stress: values.stress } })
+            defaultDie: Number(values.defaultDie), rollMode: values.rollMode, skillCatalog: parseScores(values.skillCatalog), statusLabels: { life: values.life, energy: values.energy, stress: values.stress } })
         if (snapshot === JSON.stringify(Object.fromEntries(new FormData(settingsForm)))) renderSettings()
     })
 }
