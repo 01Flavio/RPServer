@@ -2,3 +2,7 @@ node_modules
 npm-debug.log
 .env
 .DS_Store
+backend/data/
+.env.*
+!.env.example
+.artifacts/

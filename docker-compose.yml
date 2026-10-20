@@ -1,16 +1,19 @@
 services:
-
   vtt:
-
-    image: node:18
-
+    image: node:24-bookworm-slim
     working_dir: /app
-
+    command: sh -c "npm ci --omit=dev && node server.js"
+    environment:
+      RPSERVER_GM_KEY: ${RPSERVER_GM_KEY:-${NOCTURNE_GM_KEY:-}}
+      RPSERVER_DATA_DIR: /data/nocturne
     volumes:
       - ./backend:/app:Z
       - ./frontend:/frontend:Z
-
-    command: sh -c "npm install && node server.js"
-
+      - vtt-node-modules:/app/node_modules
+      - nocturne-data:/data/nocturne
     ports:
       - "3000:3000"
+volumes:
+  # Name retained from the previous integration to preserve existing data volumes.
+  nocturne-data:
+  vtt-node-modules:

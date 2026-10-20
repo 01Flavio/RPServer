@@ -1,124 +1,86 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#111318">
-    <title>Crônicas — Mesa virtual de RPG</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#10110f">
+    <title>Véspera — suas histórias, à mesma mesa</title>
+    <link rel="stylesheet" href="/style.css">
     <script src="/socket.io/socket.io.js" defer></script>
-    <script src="app.js" defer></script>
+    <script src="/map.js" defer></script>
+    <script src="/app.js" defer></script>
 </head>
 <body>
-    <div class="app-shell">
-        <header class="topbar">
-            <a class="brand" href="/" aria-label="Crônicas, início">
-                <span class="brand-mark" aria-hidden="true">✦</span>
-                <span>crônicas</span>
-            </a>
-            <div class="table-status">
-                <span class="status-dot" id="connectionDot"></span>
-                <span id="connectionStatus">Desconectado</span>
-                <span class="status-divider"></span>
-                <span class="room-label">MESA</span>
-                <strong id="roomLabel">—</strong>
+    <a class="skip" href="#main">Pular para o conteúdo</a>
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Véspera, início"><span class="sigil" aria-hidden="true">✧</span><span>VÉSPERA<small>HISTÓRIAS ALÉM DO COMUM</small></span></a>
+        <nav aria-label="Navegação principal"><button id="home" class="nav-link active" type="button">Campanhas</button><button id="returnTable" class="nav-link" type="button" hidden>Mesa atual</button></nav>
+        <div class="connection"><span class="dot" id="connectionDot"></span><span id="connection" role="status">Conectando…</span></div>
+    </header>
+    <main id="main">
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+        <section id="lobby">
+            <div class="hero">
+                <div class="hero-copy"><p class="eyebrow">UM REFÚGIO PARA SUAS HISTÓRIAS</p><h1>Toda grande aventura<br>começa ao <em>anoitecer.</em></h1><p class="lead">Reúna seu grupo, dê vida aos seus personagens e deixe os dados contarem o resto. Um lugar para todas as suas campanhas.</p><div class="hero-rule"><span>✦</span> SUA MESA. SEU SISTEMA. SEU DESTINO.</div></div>
+                <div class="panel entrance" id="entrance">
+                    <p class="eyebrow">SEU LUGAR À MESA</p><h2>A história espera por você</h2>
+                    <div class="segmented" role="group" aria-label="Forma de acesso"><button id="playerMode" type="button" aria-pressed="true">Sou jogador</button><button id="gmMode" type="button" aria-pressed="false">Sou mestre</button></div>
+                    <form id="joinForm">
+                        <div id="playerFields"><label>Código da campanha<input name="sessionId" required pattern="[a-z0-9_-]{2,32}" maxlength="32" placeholder="Ex.: nocturne" autocomplete="off"></label><label>Identificador do personagem<input name="characterId" required maxlength="40" placeholder="Ex.: alex — recebido no convite" autocomplete="off"></label></div>
+                        <label id="keyLabel"><span id="keyCaption">Código de acesso do convite</span><input name="key" type="password" maxlength="256" required autocomplete="off"></label>
+                        <button class="primary full" id="accessButton" type="submit">Entrar na campanha <span>→</span></button>
+                        <p class="muted" id="accessHelp">Seu mestre envia a campanha, o personagem e o código de acesso.</p>
+                    </form>
+                </div>
+                <div class="panel entrance" id="masterWelcome" hidden><span class="crest" aria-hidden="true">✧</span><p class="eyebrow">O OUTRO LADO DA HISTÓRIA</p><h2>Bem-vindo, mestre.</h2><p class="muted">Continue uma campanha ou abra as portas de um novo mundo.</p><button class="primary full" id="newCampaign" type="button">Criar campanha <span>＋</span></button><button class="quiet full" id="logout" type="button">Encerrar acesso de mestre</button></div>
             </div>
-            <button class="button button-quiet" id="changeTableButton" type="button">Trocar de mesa</button>
-        </header>
+            <div class="section-heading"><div><p class="eyebrow">SEU PRÓXIMO CAPÍTULO</p><h2 id="campaignHeading">Histórias para explorar</h2></div><span id="campaignCount" class="muted">Uma mesa para cada universo</span></div>
+            <div class="campaigns" id="campaigns"></div>
+            <div class="principles"><div><span>Ⅰ</span><h3>Crie seu universo</h3><p>Sistemas livres, personagens seus. Uma campanha em branco ou um ponto de partida.</p></div><div><span>Ⅱ</span><h3>Jogue em companhia</h3><p>Mapa, mensagens e fichas compartilhados em tempo real com seu grupo.</p></div><div><span>Ⅲ</span><h3>Guarde cada capítulo</h3><p>Personagens, rolagens e descobertas salvos para a próxima sessão.</p></div></div>
+        </section>
 
-        <main class="workspace">
-            <aside class="sidebar">
-                <section class="sidebar-section">
-                    <div class="section-heading">
-                        <div>
-                            <p class="eyebrow">SUA MESA</p>
-                            <h2>Jogadores</h2>
-                        </div>
-                        <span class="count-badge" id="playerCount">0</span>
-                    </div>
-                    <ul class="player-list" id="playerList" aria-live="polite">
-                        <li class="empty-state">Entre em uma mesa para encontrar seu grupo.</li>
-                    </ul>
-                </section>
-                <section class="sidebar-note">
-                    <span class="note-icon" aria-hidden="true">✧</span>
-                    <p><strong>Um mundo, muitas histórias.</strong><br>Compartilhe o código da mesa para chamar seus amigos.</p>
-                </section>
-                <div class="sidebar-footer">FEITO PARA BOAS AVENTURAS</div>
-            </aside>
-
-            <section class="map-column" aria-label="Mapa da mesa">
-                <div class="map-toolbar">
-                    <div>
-                        <p class="eyebrow">CAMPO DE AVENTURA</p>
-                        <h1>Mapa da mesa</h1>
-                    </div>
-                    <div class="map-hint"><span aria-hidden="true">⌖</span> Clique para posicionar · arraste para mover</div>
-                </div>
-                <div class="map-frame">
-                    <canvas id="map" width="1200" height="760" aria-label="Mapa quadriculado compartilhado"></canvas>
-                    <div class="map-overlay" id="mapOverlay">
-                        <div class="join-card">
-                            <span class="join-sparkle" aria-hidden="true">✦</span>
-                            <p class="eyebrow">SUA PRÓXIMA AVENTURA</p>
-                            <h2>Reúna seu grupo</h2>
-                            <p>Escolha seu nome e o código da mesa para começar a jogar.</p>
-                            <form id="joinForm">
-                                <label for="playerName">Seu nome</label>
-                                <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Ex.: Lia, a barda" required>
-                                <label for="roomId">Código da mesa</label>
-                                <input id="roomId" name="roomId" maxlength="32" autocomplete="off" placeholder="Ex.: taverna-do-dragao" required>
-                                <button class="button button-primary join-button" type="submit">Entrar na mesa <span aria-hidden="true">→</span></button>
-                                <p class="form-error" id="joinError" role="alert"></p>
+        <section id="table" hidden>
+            <div class="table-heading"><div><p class="eyebrow" id="sessionLabel"></p><h1 id="campaignTitle"></h1><p class="muted" id="campaignDescription"></p></div><div class="heading-actions"><span id="roleBadge" class="badge"></span><button id="leave" class="quiet" type="button">Sair da mesa</button></div></div>
+            <div class="table-tabs" role="group" aria-label="Ferramentas da mesa"><button data-pane="map" aria-pressed="true" type="button">◇ Mesa & mapa</button><button data-pane="sheet" aria-pressed="false" type="button">♙ Personagens</button><button data-pane="settings" id="settingsTab" aria-pressed="false" type="button" hidden>✧ Ferramentas do mestre</button></div>
+            <div class="workspace">
+                <aside class="panel roster"><div class="section-heading"><p class="eyebrow">À MESA</p><span id="playerCount" class="badge">0</span></div><nav id="characters" aria-label="Personagens da campanha"></nav><button id="addCharacter" class="quiet full" type="button" hidden>＋ Personagem</button><p class="muted" id="rosterHelp"></p></aside>
+                <div class="main-column">
+                    <section id="mapPane" class="panel map-panel">
+                        <div class="section-heading"><div><p class="eyebrow">ONDE A HISTÓRIA ACONTECE</p><h2>Mapa da sessão</h2></div><span class="badge">AO VIVO</span></div><p class="muted" id="mapHelp">Escolha seu personagem e clique no mapa para posicionar seu token.</p>
+                        <canvas id="map" width="1200" height="760" tabindex="0" aria-label="Mapa compartilhado. Clique para posicionar o token selecionado. Use as setas para mover pelo teclado."></canvas>
+                        <div class="map-footer"><span>◇ Clique para posicionar · arraste para mover</span><span>Grade de 50 unidades · setas para mover</span></div>
+                        <div class="map-nudge"><span aria-hidden="true">✧</span><p>Um ponto no mapa.<br><strong>Infinitos caminhos à frente.</strong></p></div>
+                    </section>
+                    <section id="sheetPane" class="panel sheet" hidden>
+                        <div id="noCharacter" class="empty"><span class="crest">♙</span><h2>Quem viverá esta história?</h2><p>Crie um personagem nas ferramentas da mesa para começar.</p></div>
+                        <div id="characterDetail" hidden>
+                            <div class="sheet-heading"><div><p class="eyebrow">FICHA DE PERSONAGEM</p><h2 id="characterName"></h2></div><button id="roll" class="quiet" type="button">Rolar dado</button></div>
+                            <div id="conflict" class="notice" hidden><p>A ficha recebeu alterações. Seu rascunho foi preservado.</p><button id="reloadSheet" class="quiet" type="button">Recarregar ficha (descartar rascunho)</button></div>
+                            <form id="sheetForm">
+                                <div class="identity"><label>Nome<input name="name" maxlength="80" required></label><label>Ocupação / classe<input name="occupation" maxlength="80"></label><label>Idade<input name="age" type="number" min="1" max="150" required></label></div>
+                                <div class="stats">
+                                    <fieldset class="life"><legend id="lifeLabel">VIDA</legend><div><input aria-label="Primeiro status atual" name="life" type="number" min="0" max="999" required><span>/</span><input aria-label="Primeiro status máximo" name="maxLife" type="number" min="1" max="999" required></div><meter id="lifeMeter" min="0" max="12" value="12">Status</meter></fieldset>
+                                    <fieldset class="energy"><legend id="energyLabel">ENERGIA</legend><div><input aria-label="Segundo status atual" name="energy" type="number" min="0" max="999" required><span>/</span><input aria-label="Segundo status máximo" name="maxEnergy" type="number" min="1" max="999" required></div><meter id="energyMeter" min="0" max="10" value="10">Status</meter></fieldset>
+                                    <fieldset class="stress"><legend id="stressLabel">ESTRESSE</legend><div><input aria-label="Terceiro status atual" name="stress" type="number" min="0" max="999" required><span>/</span><input aria-label="Terceiro status máximo" name="maxStress" type="number" min="1" max="999" required></div><meter id="stressMeter" min="0" max="100" value="0">Status</meter></fieldset>
+                                </div>
+                                <label>Identidade e história<textarea name="bio" maxlength="4000" rows="3"></textarea></label><div class="scores"><section><h3>Atributos</h3><div id="attributes"></div></section><section><h3>Perícias</h3><div id="skills"></div></section></div>
+                                <details><summary>Editar atributos e perícias</summary><p class="muted">Uma linha por valor: Nome: número (−999 a 9999). Salve antes de rolar.</p><label>Atributos<textarea name="attributes" rows="6" maxlength="2500"></textarea></label><label>Perícias<textarea name="skills" rows="6" maxlength="2500"></textarea></label></details>
+                                <label>Inventário<textarea name="inventory" maxlength="4000" rows="4"></textarea></label><div class="sheet-actions"><span class="muted" id="saveStatus"></span><button class="primary" type="submit">Salvar ficha</button></div>
                             </form>
+                            <section id="invitation" hidden><h3>Acesso do jogador</h3><p class="muted">O código dá acesso somente a este personagem. Gerar outro revoga o anterior e desconecta quem estiver usando a ficha.</p><button id="invite" class="quiet" type="button">Gerar código de acesso</button><output id="inviteOutput" aria-live="polite"></output><button id="removeCharacter" class="danger" type="button">Remover personagem</button></section>
                         </div>
-                    </div>
+                    </section>
+                    <section id="settingsPane" class="panel" hidden>
+                        <p class="eyebrow">FERRAMENTAS DO MESTRE</p><h2>As regras do seu mundo</h2><p class="muted">Escolha o sistema e adapte a mesa à sua campanha.</p>
+                        <form id="settingsForm"><label>Título<input name="title" required maxlength="80"></label><label>Sistema<input name="system" maxlength="80" placeholder="Ex.: fantasia d20, horror d100, sistema próprio"></label><label>Descrição<textarea name="description" maxlength="2000" rows="3"></textarea></label><div class="form-grid"><label>Faces do dado padrão<input name="defaultDie" type="number" min="2" max="1000" required></label><label>Testes de atributos / perícias<select name="rollMode"><option value="under">Dado ≤ valor: sucesso</option><option value="modifier">Dado + valor: total</option></select></label></div><h3>Nomes dos status</h3><div class="form-grid three"><label>Primeiro status<input name="life" required maxlength="24"></label><label>Segundo status<input name="energy" required maxlength="24"></label><label>Terceiro status<input name="stress" required maxlength="24"></label></div><p id="settingsStatus" class="muted"></p><button class="quiet" id="reloadSettings" type="button">Recarregar configurações</button> <button class="primary" type="submit">Salvar campanha</button></form>
+                    </section>
                 </div>
-                <div class="map-footer">
-                    <span><span class="legend-dot"></span> Cada jogador controla seu próprio token</span>
-                    <span id="tokenHint">Entre na mesa para jogar</span>
-                </div>
-            </section>
-
-            <aside class="right-panel">
-                <section class="dice-section">
-                    <div class="section-heading">
-                        <div>
-                            <p class="eyebrow">SORTE OU DESTINO?</p>
-                            <h2>Rolagem</h2>
-                        </div>
-                        <span class="dice-icon" aria-hidden="true">🎲</span>
-                    </div>
-                    <form id="diceForm" class="dice-form">
-                        <label class="sr-only" for="diceExpression">Expressão dos dados</label>
-                        <input id="diceExpression" value="1d20" maxlength="12" autocomplete="off" aria-label="Expressão dos dados, por exemplo 2d6+3">
-                        <button class="button button-primary roll-button" type="submit" aria-label="Rolar dados">Rolar</button>
-                    </form>
-                    <p class="dice-help">Exemplos: <button type="button" class="dice-preset" data-expression="1d20">1d20</button> · <button type="button" class="dice-preset" data-expression="2d6+3">2d6+3</button></p>
-                </section>
-
-                <section class="chat-section">
-                    <div class="chat-heading">
-                        <div>
-                            <p class="eyebrow">NA MESA</p>
-                            <h2>Conversa</h2>
-                        </div>
-                        <span class="live-label"><span class="live-dot"></span> AO VIVO</span>
-                    </div>
-                    <div class="chat-messages" id="chat" aria-live="polite" aria-label="Mensagens da mesa">
-                        <div class="chat-welcome">
-                            <span aria-hidden="true">✧</span>
-                            <p>As histórias da mesa aparecem aqui.</p>
-                        </div>
-                    </div>
-                    <form id="chatForm" class="chat-form">
-                        <label class="sr-only" for="messageInput">Mensagem para a mesa</label>
-                        <input id="messageInput" maxlength="500" placeholder="Diga algo ao grupo..." autocomplete="off">
-                        <button class="send-button" type="submit" aria-label="Enviar mensagem">↑</button>
-                    </form>
-                </section>
-            </aside>
-        </main>
-    </div>
+                <aside class="panel journal"><p class="eyebrow">ECOS DA HISTÓRIA</p><h2>Diário da mesa</h2><form id="diceForm" class="dice-form"><label>DADOS<input name="expression" value="1d20" maxlength="12" autocomplete="off" aria-label="Expressão de dados"></label><button type="submit" class="primary">Rolar</button></form><div class="dice-presets"><button type="button" data-dice="1d6">d6</button><button type="button" data-dice="1d20">d20</button><button type="button" data-dice="1d100">d100</button><button type="button" data-dice="2d6+3">2d6+3</button></div><div id="messages" role="log" aria-live="polite" aria-label="Mensagens da campanha"></div><form id="messageForm"><label>Destinatário<select name="to" id="recipient"></select></label><label>Mensagem<textarea name="text" rows="3" maxlength="2000" required placeholder="Escreva o próximo capítulo…"></textarea></label><button class="primary full" type="submit">Enviar mensagem <span>↑</span></button></form></aside>
+            </div>
+        </section>
+    </main>
+    <footer><span class="brand-small">✧ VÉSPERA</span><span>Todo mundo tem uma história. A sua começa aqui.</span><span>FEITO PARA JOGAR EM COMPANHIA</span></footer>
+    <dialog id="createDialog" aria-labelledby="createTitle"><form id="createForm"><div class="section-heading"><p class="eyebrow">UM NOVO CAPÍTULO</p><button class="icon quiet" type="button" data-close="createDialog" aria-label="Fechar">×</button></div><h2 id="createTitle">Criar campanha</h2><label>Ponto de partida<select name="template"><option value="blank">Campanha em branco</option><option value="nocturne">Nocturne — exemplo de horror investigativo</option></select></label><label>Título<input name="title" required maxlength="80" placeholder="Como sua história será lembrada?"></label><label>Código da campanha<input name="id" required minlength="2" maxlength="32" pattern="[a-z0-9_-]{2,32}" placeholder="Ex.: as-cronicas-do-norte"></label><label>Sistema<input name="system" maxlength="80" value="Sistema livre"></label><label>Descrição<textarea name="description" maxlength="2000" rows="3"></textarea></label><p id="createError" class="error" role="status"></p><button class="primary full" type="submit">Abrir as portas da campanha →</button></form></dialog>
+    <dialog id="characterDialog" aria-labelledby="newCharacterTitle"><form id="characterForm"><div class="section-heading"><p class="eyebrow">UMA NOVA PRESENÇA</p><button class="icon quiet" type="button" data-close="characterDialog" aria-label="Fechar">×</button></div><h2 id="newCharacterTitle">Criar personagem</h2><label>Nome<input name="name" required maxlength="80" placeholder="Quem atenderá ao chamado?"></label><p id="characterError" class="error" role="status"></p><button class="primary full" type="submit">Adicionar à campanha →</button></form></dialog>
 </body>
 </html>
