@@ -1,48 +1,124 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
-
-<meta charset="UTF-8">
-
-<title>VTT</title>
-
-<link rel="stylesheet" href="style.css">
-
-<script src="/socket.io/socket.io.js"></script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111318">
+    <title>Crônicas — Mesa virtual de RPG</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js" defer></script>
+    <script src="app.js" defer></script>
 </head>
-
 <body>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="/" aria-label="Crônicas, início">
+                <span class="brand-mark" aria-hidden="true">✦</span>
+                <span>crônicas</span>
+            </a>
+            <div class="table-status">
+                <span class="status-dot" id="connectionDot"></span>
+                <span id="connectionStatus">Desconectado</span>
+                <span class="status-divider"></span>
+                <span class="room-label">MESA</span>
+                <strong id="roomLabel">—</strong>
+            </div>
+            <button class="button button-quiet" id="changeTableButton" type="button">Trocar de mesa</button>
+        </header>
 
-<h1>Mini VTT</h1>
+        <main class="workspace">
+            <aside class="sidebar">
+                <section class="sidebar-section">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">SUA MESA</p>
+                            <h2>Jogadores</h2>
+                        </div>
+                        <span class="count-badge" id="playerCount">0</span>
+                    </div>
+                    <ul class="player-list" id="playerList" aria-live="polite">
+                        <li class="empty-state">Entre em uma mesa para encontrar seu grupo.</li>
+                    </ul>
+                </section>
+                <section class="sidebar-note">
+                    <span class="note-icon" aria-hidden="true">✧</span>
+                    <p><strong>Um mundo, muitas histórias.</strong><br>Compartilhe o código da mesa para chamar seus amigos.</p>
+                </section>
+                <div class="sidebar-footer">FEITO PARA BOAS AVENTURAS</div>
+            </aside>
 
-<canvas id="map" width="800" height="500"></canvas>
+            <section class="map-column" aria-label="Mapa da mesa">
+                <div class="map-toolbar">
+                    <div>
+                        <p class="eyebrow">CAMPO DE AVENTURA</p>
+                        <h1>Mapa da mesa</h1>
+                    </div>
+                    <div class="map-hint"><span aria-hidden="true">⌖</span> Clique para posicionar · arraste para mover</div>
+                </div>
+                <div class="map-frame">
+                    <canvas id="map" width="1200" height="760" aria-label="Mapa quadriculado compartilhado"></canvas>
+                    <div class="map-overlay" id="mapOverlay">
+                        <div class="join-card">
+                            <span class="join-sparkle" aria-hidden="true">✦</span>
+                            <p class="eyebrow">SUA PRÓXIMA AVENTURA</p>
+                            <h2>Reúna seu grupo</h2>
+                            <p>Escolha seu nome e o código da mesa para começar a jogar.</p>
+                            <form id="joinForm">
+                                <label for="playerName">Seu nome</label>
+                                <input id="playerName" name="playerName" maxlength="24" autocomplete="nickname" placeholder="Ex.: Lia, a barda" required>
+                                <label for="roomId">Código da mesa</label>
+                                <input id="roomId" name="roomId" maxlength="32" autocomplete="off" placeholder="Ex.: taverna-do-dragao" required>
+                                <button class="button button-primary join-button" type="submit">Entrar na mesa <span aria-hidden="true">→</span></button>
+                                <p class="form-error" id="joinError" role="alert"></p>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="map-footer">
+                    <span><span class="legend-dot"></span> Cada jogador controla seu próprio token</span>
+                    <span id="tokenHint">Entre na mesa para jogar</span>
+                </div>
+            </section>
 
-<div id="ui">
+            <aside class="right-panel">
+                <section class="dice-section">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">SORTE OU DESTINO?</p>
+                            <h2>Rolagem</h2>
+                        </div>
+                        <span class="dice-icon" aria-hidden="true">🎲</span>
+                    </div>
+                    <form id="diceForm" class="dice-form">
+                        <label class="sr-only" for="diceExpression">Expressão dos dados</label>
+                        <input id="diceExpression" value="1d20" maxlength="12" autocomplete="off" aria-label="Expressão dos dados, por exemplo 2d6+3">
+                        <button class="button button-primary roll-button" type="submit" aria-label="Rolar dados">Rolar</button>
+                    </form>
+                    <p class="dice-help">Exemplos: <button type="button" class="dice-preset" data-expression="1d20">1d20</button> · <button type="button" class="dice-preset" data-expression="2d6+3">2d6+3</button></p>
+                </section>
 
-<div id="chatBox">
-
-<h3>Chat</h3>
-
-<div id="chat"></div>
-
-<input id="msg" placeholder="Mensagem">
-
-<button onclick="sendChat()">Enviar</button>
-
-</div>
-
-<div id="diceBox">
-
-<button onclick="rollDice()">Rolar D20</button>
-
-</div>
-
-</div>
-
-<script src="app.js"></script>
-
+                <section class="chat-section">
+                    <div class="chat-heading">
+                        <div>
+                            <p class="eyebrow">NA MESA</p>
+                            <h2>Conversa</h2>
+                        </div>
+                        <span class="live-label"><span class="live-dot"></span> AO VIVO</span>
+                    </div>
+                    <div class="chat-messages" id="chat" aria-live="polite" aria-label="Mensagens da mesa">
+                        <div class="chat-welcome">
+                            <span aria-hidden="true">✧</span>
+                            <p>As histórias da mesa aparecem aqui.</p>
+                        </div>
+                    </div>
+                    <form id="chatForm" class="chat-form">
+                        <label class="sr-only" for="messageInput">Mensagem para a mesa</label>
+                        <input id="messageInput" maxlength="500" placeholder="Diga algo ao grupo..." autocomplete="off">
+                        <button class="send-button" type="submit" aria-label="Enviar mensagem">↑</button>
+                    </form>
+                </section>
+            </aside>
+        </main>
+    </div>
 </body>
-
 </html>
